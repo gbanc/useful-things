@@ -12,19 +12,26 @@ log_time() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
 }
 
-# Function to calculate and echo total time spent since the last 'start'
+# Function to calculate and echo total time based on start/end pairs
 calculate_and_echo_total() {
-    # Extract the last start time
-    start_time=$(grep "Work started" "$LOG_FILE" | tail -1 | awk '{print $1, $2}')
+    local total_sec=0
+    local start_time=""
+    local end_time=""
+    local in_session=false
 
-    # Current time
-    end_time=$(date '+%Y-%m-%d %H:%M:%S')
+    while IFS= read -r line; do
+        if [[ "$line" =~ "Work started" ]]; then
+            start_time=$(echo "$line" | awk '{print $1, $2}')
+            in_session=true
+        elif [[ "$line" =~ "Work ended" ]] && [ "$in_session" = true ]; then
+            end_time=$(echo "$line" | awk '{print $1, $2}')
+            start_sec=$(date -d "$start_time" +%s)
+            end_sec=$(date -d "$end_time" +%s)
+            total_sec=$((total_sec + (end_sec - start_sec)))
+            in_session=false
+        fi
+    done < "$LOG_FILE"
 
-    # Calculate total time using date command
-    start_sec=$(date -d "$start_time" +%s)
-    end_sec=$(date -d "$end_time" +%s)
-    total_sec=$((end_sec - start_sec))
-    
     # Convert total seconds to hours, minutes, and seconds
     ((h=total_sec/3600))
     ((m=(total_sec%3600)/60))
@@ -41,16 +48,13 @@ case "$1" in
         ;;
     end)
         log_time "Work ended"
-        calculate_and_echo_total # Echo the total time since the last 'start'
-        ;;
-    endblock)
-        log_time "End of time block"
         ;;
     total)
-        calculate_and_echo_total # Separate option to just calculate and echo the total without logging 'end'
+        calculate_and_echo_total
         ;;
     *)
-        echo "Usage: $0 {start|end|endblock|total}"
+        echo "Usage: $0 {start|end|total}"
         exit 1
         ;;
 esac
+
